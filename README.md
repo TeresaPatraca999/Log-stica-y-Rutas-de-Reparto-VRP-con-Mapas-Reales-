@@ -127,13 +127,3 @@ Campos:
 - En modo local, los destinos deben estar dentro de la misma ciudad o region cercana.
 - En modo nacional, las rutas son una aproximacion visual y de distancia, no caminos carretera por carretera.
 
-## Comandos para subir a GitHub
-
-```powershell
-git init
-git add .
-git commit -m "Proyecto VRP con app de escritorio"
-git branch -M main
-git remote add origin https://github.com/TU_USUARIO/TU_REPOSITORIO.git
-git push -u origin main
-```
