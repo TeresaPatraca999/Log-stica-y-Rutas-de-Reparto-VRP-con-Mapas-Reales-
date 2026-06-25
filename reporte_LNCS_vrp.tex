@@ -1,0 +1,882 @@
+% This is a report prepared with the LLNCS macro package for
+% Springer Computer Science proceedings.
+%
+\documentclass[runningheads]{llncs}
+%
+\usepackage[T1]{fontenc}
+% T1 fonts will be used to generate the final print and online PDFs,
+% so please use T1 fonts in your manuscript whenever possible.
+%
+\usepackage[utf8]{inputenc}
+\usepackage[spanish]{babel}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{url}
+% If you use the hyperref package, please uncomment the following two lines
+% to display URLs in blue roman font according to Springer's eBook style:
+%\usepackage{color}
+%\renewcommand\UrlFont{\color{blue}\rmfamily}
+%\urlstyle{rm}
+%
+
+\title{Desarrollo de una Aplicaci\'on para Optimizar Rutas de Reparto mediante un Algoritmo Gen\'etico}
+
+\titlerunning{Aplicaci\'on VRP con Algoritmo Gen\'etico}
+
+\author{Nombre del estudiante\inst{1}}
+\authorrunning{Nombre del estudiante}
+\institute{Instituci\'on educativa\\
+\email{correo@ejemplo.com}}
+
+\begin{document}
+
+\maketitle              % typeset the header of the contribution
+
+\begin{abstract}
+Este reporte describe el proceso completo de creaci\'on de una aplicaci\'on para
+resolver una instancia del Problema de Ruteo de Veh\'iculos (VRP, por sus siglas
+en ingl\'es), aplicado a la distribuci\'on de paquetes desde un dep\'osito hacia un
+conjunto de clientes. La soluci\'on desarrollada integra una interfaz gr\'afica de
+escritorio, administraci\'on de datos mediante archivos CSV, selecci\'on de
+destinos desde un mapa, visualizaci\'on geogr\'afica de rutas y un algoritmo
+gen\'etico para buscar soluciones de baja distancia bajo restricciones de
+capacidad y cantidad de veh\'iculos. El documento sigue una metodolog\'ia
+cient\'ifica: primero contextualiza el problema log\'istico, despu\'es define los
+objetivos del proyecto, presenta el dise\~no matem\'atico y computacional,
+describe la experimentaci\'on realizada y finalmente eval\'ua los resultados,
+limitaciones y oportunidades de mejora.
+
+\keywords{VRP \and Algoritmo gen\'etico \and Optimizaci\'on \and Log\'istica \and Mapas interactivos}
+\end{abstract}
+
+\section*{Repositorio del proyecto}
+
+El c\'odigo fuente, los archivos de datos y los recursos necesarios para ejecutar
+la aplicaci\'on se encuentran disponibles en el siguiente repositorio de GitHub:
+\url{https://github.com/usuario/nombre-del-repositorio}.
+
+\section{Introducci\'on}
+
+La log\'istica es una actividad fundamental para el funcionamiento de empresas,
+instituciones y servicios que dependen del movimiento de mercanc\'ias. En un
+sistema de distribuci\'on, no basta con contar con veh\'iculos y productos; tambi\'en
+es necesario decidir qu\'e veh\'iculo atiende a cada cliente, en qu\'e orden se
+realizan las entregas, cu\'anta carga transporta cada unidad y cu\'al es la
+distancia total que se recorrer\'a. Estas decisiones influyen directamente en el
+costo operativo, el tiempo de entrega, el consumo de combustible, el desgaste de
+los veh\'iculos y la calidad del servicio ofrecido al cliente.
+
+En contextos reales, la distribuci\'on de mercanc\'ias se vuelve m\'as compleja por
+la presencia de restricciones. Un cami\'on no puede transportar carga ilimitada,
+las entregas deben partir de un punto de origen, los clientes est\'an ubicados en
+diferentes coordenadas geogr\'aficas y la distancia entre dos puntos no siempre
+coincide con una l\'inea recta. Adem\'as, cuando aumenta el n\'umero de destinos,
+crece r\'apidamente la cantidad de combinaciones posibles para visitar a todos los
+clientes. Por esta raz\'on, la planeaci\'on manual de rutas puede producir
+soluciones poco eficientes o requerir demasiado tiempo.
+
+El problema estudiado en este proyecto se conoce como Problema de Ruteo de
+Veh\'iculos o Vehicle Routing Problem (VRP). De manera general, el VRP consiste
+en encontrar un conjunto de rutas para una flota de veh\'iculos que salen de un
+dep\'osito, atienden a un conjunto de clientes y regresan al punto de origen. El
+objetivo com\'un es minimizar la distancia total recorrida o el costo total de
+transporte, respetando restricciones como capacidad de carga, cantidad de
+veh\'iculos disponibles y demanda de cada cliente~\cite{toth2014}.
+
+El VRP es un problema complejo porque pertenece a la familia de problemas de
+optimizaci\'on combinatoria. Esto significa que la soluci\'on se busca entre una
+gran cantidad de combinaciones discretas. Incluso una instancia peque\~na puede
+generar muchas alternativas: primero debe decidirse el orden de visita de los
+clientes y, adem\'as, c\'omo se dividen esos clientes entre los veh\'iculos. Si se
+pretendiera revisar exhaustivamente todas las combinaciones, el tiempo de
+c\'alculo crecer\'ia de forma acelerada conforme aumenta el n\'umero de clientes.
+
+Debido a esta dificultad, en muchos escenarios se utilizan m\'etodos
+aproximados. Estos m\'etodos no siempre garantizan encontrar el \'optimo global,
+pero pueden obtener soluciones de buena calidad en tiempos razonables. Entre
+ellos se encuentran las metaheur\'isticas, como b\'usqueda tab\'u, recocido
+simulado, colonias de hormigas y algoritmos gen\'eticos. En este proyecto se
+elige un algoritmo gen\'etico porque su funcionamiento se adapta bien a problemas
+basados en permutaciones, como el orden de visita de clientes.
+
+Los algoritmos gen\'eticos se inspiran en procesos evolutivos. Trabajan con una
+poblaci\'on de soluciones candidatas, eval\'uan su calidad mediante una funci\'on
+de aptitud, seleccionan soluciones prometedoras y generan nuevas alternativas
+mediante operadores de cruza y mutaci\'on~\cite{goldberg1989}. Para el VRP, cada
+soluci\'on puede representarse como una permutaci\'on de clientes. Despu\'es, esa
+permutaci\'on se interpreta como una secuencia que se divide en rutas de acuerdo
+con la capacidad de los veh\'iculos. Esta representaci\'on permite explorar muchos
+\'ordenes de entrega sin construir manualmente cada ruta desde cero.
+
+La aplicaci\'on desarrollada busca demostrar este enfoque de manera pr\'actica.
+El sistema fue construido en Python y cuenta con una interfaz de escritorio en
+Tkinter. Desde la aplicaci\'on, el usuario puede definir la cantidad de veh\'iculos,
+la capacidad de carga, el dep\'osito, los destinos de entrega y los par\'ametros
+del algoritmo gen\'etico. Los clientes pueden cargarse desde archivos CSV,
+editarse en una tabla o agregarse mediante clics sobre un mapa. Una vez
+ejecutada la optimizaci\'on, el sistema muestra el resumen por veh\'iculo, la ruta
+asignada, la carga total, la distancia aproximada y un mapa interactivo con los
+recorridos.
+
+Una parte importante del proyecto es el c\'alculo de distancias. Para escenarios
+locales, la aplicaci\'on usa OSMnx y NetworkX para obtener una red vial basada en
+OpenStreetMap y calcular rutas sobre calles reales~\cite{osmnx,networkx}. Para
+escenarios nacionales o con puntos demasiado separados, se implementa un modo
+aproximado basado en la distancia Haversine multiplicada por un factor de
+carretera. De este modo, la aplicaci\'on permite experimentar tanto con rutas
+urbanas o regionales como con entregas a estados lejanos, aunque con diferente
+nivel de precisi\'on.
+
+El prop\'osito del proyecto es educativo y aplicado. Por un lado, permite
+entender c\'omo se modela un problema log\'istico real como un problema de
+optimizaci\'on. Por otro lado, muestra c\'omo integrar un algoritmo gen\'etico con
+una interfaz gr\'afica, archivos de datos y mapas interactivos. La aplicaci\'on no
+pretende sustituir a un sistema profesional de planeaci\'on log\'istica, pero s\'i
+ofrece una base funcional para estudiar el VRP y visualizar sus resultados.
+
+El resto del reporte se organiza de la siguiente manera. La Secci\'on 2 presenta
+el objetivo general y los objetivos espec\'ificos del proyecto. La Secci\'on 3
+describe el dise\~no del sistema, incluyendo el modelo matem\'atico, las
+restricciones, la arquitectura, la interfaz, el algoritmo gen\'etico, el flujo de
+ejecuci\'on y los diagramas de apoyo. La Secci\'on 4 explica la experimentaci\'on,
+el ambiente de desarrollo, los datos utilizados, los par\'ametros y los resultados
+observados. Finalmente, la Secci\'on 5 presenta las conclusiones, eval\'ua el
+cumplimiento de los objetivos y propone mejoras futuras.
+
+\section{Objetivos}
+
+\subsection{Objetivo general}
+
+Desarrollar una aplicaci\'on de escritorio capaz de optimizar rutas de reparto
+para varios veh\'iculos mediante un algoritmo gen\'etico, considerando la distancia
+recorrida, la capacidad m\'axima de los camiones y el n\'umero de veh\'iculos
+disponibles.
+
+\subsection{Objetivos espec\'ificos}
+
+\begin{itemize}
+    \item Modelar el problema de reparto como un VRP con dep\'osito, clientes,
+    demandas, veh\'iculos y capacidad m\'axima. Este objetivo permite transformar
+    una situaci\'on log\'istica real en un problema computacional medible, donde
+    cada destino se representa como un nodo y cada carga como una demanda.
+    \item Implementar un algoritmo gen\'etico con representaci\'on por
+    permutaciones, cruza OX y mutaci\'on por intercambio. Este objetivo aporta el
+    mecanismo de b\'usqueda de soluciones, evitando depender de una revisi\'on
+    manual o exhaustiva de todas las combinaciones posibles.
+    \item Incorporar penalizaciones cuando una soluci\'on exceda la capacidad de
+    los veh\'iculos o requiera m\'as camiones que los disponibles. Con ello, el
+    sistema puede evaluar soluciones no factibles y favorecer aquellas que
+    cumplen las restricciones operativas.
+    \item Crear una interfaz gr\'afica que permita cargar, agregar, modificar y
+    eliminar destinos de entrega. Este objetivo facilita el uso del sistema por
+    parte de usuarios que no necesitan interactuar directamente con el c\'odigo.
+    \item Generar mapas interactivos para visualizar el dep\'osito, los clientes
+    y las rutas resultantes. La visualizaci\'on permite interpretar r\'apidamente
+    la soluci\'on y comprobar si las rutas son coherentes con la ubicaci\'on de los
+    destinos.
+    \item Evaluar el comportamiento de la aplicaci\'on con datos locales y
+    nacionales aproximados. Esta evaluaci\'on permite observar el funcionamiento
+    del sistema en escenarios de diferente escala y reconocer las limitaciones
+    de cada modo de distancia.
+\end{itemize}
+
+\section{Dise\~no}
+
+\subsection{Descripci\'on detallada del problema VRP}
+
+El sistema resuelve una variante capacitada del VRP. Se cuenta con un dep\'osito
+central y un conjunto de clientes que deben ser atendidos por una flota limitada
+de veh\'iculos. Cada cliente tiene una demanda, entendida como peso, volumen o
+unidad de carga. Cada veh\'iculo tiene una capacidad m\'axima, por lo que no puede
+transportar una suma de demandas mayor que dicho l\'imite. Adem\'as, todos los
+veh\'iculos disponibles se consideran homog\'eneos, es decir, tienen la misma
+capacidad y el mismo criterio de costo asociado a la distancia.
+
+La dificultad del problema surge de dos decisiones simult\'aneas. La primera es
+la asignaci\'on: determinar qu\'e clientes ser\'an atendidos por cada veh\'iculo. La
+segunda es el secuenciamiento: decidir el orden en que cada veh\'iculo visitar\'a
+sus clientes. Una mala asignaci\'on puede producir rutas sobrecargadas o exigir
+m\'as camiones de los disponibles. Un mal secuenciamiento puede aumentar
+innecesariamente la distancia recorrida aunque la asignaci\'on sea factible.
+
+En la aplicaci\'on, la soluci\'on se expresa como rutas cerradas. Cada ruta inicia
+en el dep\'osito, visita uno o m\'as clientes y regresa al dep\'osito. Este
+comportamiento se refleja tanto en la tabla de resultados como en el mapa
+generado. El dep\'osito se identifica visualmente como origen y destino final de
+todos los veh\'iculos.
+
+\subsection{Modelo matem\'atico utilizado}
+
+Sea $V = \{0,1,2,\ldots,n\}$ el conjunto de nodos, donde el nodo $0$ representa
+el dep\'osito y los nodos $1$ a $n$ representan clientes. Cada cliente $i$ tiene
+una demanda $d_i$, y el dep\'osito tiene demanda $d_0=0$. Sea $M$ el n\'umero de
+veh\'iculos disponibles y $Q$ la capacidad m\'axima de cada veh\'iculo. La distancia
+entre dos nodos $i$ y $j$ se denota como $c_{ij}$.
+
+La versi\'on cl\'asica del VRP puede expresarse con variables binarias $x_{ijk}$,
+donde $x_{ijk}=1$ si el veh\'iculo $k$ viaja directamente del nodo $i$ al nodo
+$j$, y $0$ en caso contrario. Aunque la implementaci\'on usa una representaci\'on
+evolutiva por permutaciones, el modelo matem\'atico de referencia permite
+explicar el objetivo del sistema:
+
+\begin{equation}
+\min Z = \sum_{k=1}^{M}\sum_{i=0}^{n}\sum_{j=0}^{n} c_{ij}x_{ijk}
+\end{equation}
+
+sujeto a que cada cliente sea visitado una sola vez:
+
+\begin{equation}
+\sum_{k=1}^{M}\sum_{i=0}^{n} x_{ijk} = 1, \quad j=1,\ldots,n
+\end{equation}
+
+y a que la carga asignada a cada veh\'iculo no exceda su capacidad:
+
+\begin{equation}
+\sum_{i=1}^{n} d_i y_{ik} \leq Q, \quad k=1,\ldots,M
+\end{equation}
+
+donde $y_{ik}=1$ si el cliente $i$ es atendido por el veh\'iculo $k$. Tambi\'en se
+requiere que las rutas salgan del dep\'osito y regresen a \'el. En la aplicaci\'on,
+estas restricciones se manejan mediante la separaci\'on de rutas por capacidad y
+mediante penalizaciones cuando la soluci\'on requiere m\'as veh\'iculos que los
+disponibles.
+
+\subsection{Funci\'on objetivo y penalizaciones}
+
+La implementaci\'on calcula el costo de una soluci\'on con una funci\'on objetivo
+penalizada:
+
+\begin{equation}
+Z = \sum_{r=1}^{R} Distancia(Ruta_r) + P
+\end{equation}
+
+donde $R$ es el n\'umero de rutas generadas y $P$ representa las penalizaciones.
+Si una soluci\'on requiere m\'as veh\'iculos que $M$, se agrega una penalizaci\'on
+grande por cada veh\'iculo excedente. Si alguna ruta supera la capacidad $Q$,
+tambi\'en se agrega una penalizaci\'on proporcional a la violaci\'on. En el c\'odigo
+se utiliza la constante:
+
+\begin{equation}
+BIG\_PENALTY = 1,000,000
+\end{equation}
+
+Este valor no representa una distancia real; su funci\'on es hacer que las
+soluciones no factibles sean menos atractivas para el algoritmo. De esta forma,
+el algoritmo gen\'etico puede comparar cualquier cromosoma, pero tender\'a a
+conservar aquellos que generan rutas factibles y de menor distancia.
+
+\subsection{Restricciones consideradas}
+
+El sistema considera las siguientes restricciones operativas:
+
+\begin{itemize}
+    \item Cada cliente debe ser atendido una vez dentro de la permutaci\'on del
+    cromosoma.
+    \item Cada veh\'iculo inicia su ruta en el dep\'osito y termina en el mismo
+    dep\'osito.
+    \item La carga total de una ruta no debe superar la capacidad m\'axima $Q$.
+    \item El n\'umero de rutas generadas no debe ser mayor que el n\'umero de
+    veh\'iculos disponibles $M$.
+    \item Un paquete no debe tener exactamente la misma ubicaci\'on que el
+    dep\'osito, ya que esto puede causar ambig\"uedad en el c\'alculo y la
+    visualizaci\'on.
+    \item En modo local, los puntos deben pertenecer a una regi\'on cercana para
+    que la red vial descargada por OSMnx sea razonable.
+\end{itemize}
+
+Algunas restricciones se validan antes de ejecutar el algoritmo, mientras que
+otras se controlan por penalizaci\'on durante la evaluaci\'on de soluciones. Esta
+combinaci\'on permite que la aplicaci\'on sea flexible sin dejar de orientar la
+b\'usqueda hacia soluciones v\'alidas.
+
+\subsection{Arquitectura de la aplicaci\'on}
+
+La aplicaci\'on sigue una arquitectura modular. Cada archivo principal cumple una
+responsabilidad distinta, lo cual facilita el mantenimiento y la explicaci\'on
+del sistema. La interfaz no contiene directamente toda la l\'ogica matem\'atica;
+en su lugar, llama a funciones especializadas para resolver el VRP y construir
+mapas.
+
+\begin{table}
+\centering
+\caption{M\'odulos principales del sistema.}\label{tab:modulos}
+\begin{tabular}{p{3.2cm}p{8.2cm}}
+\toprule
+M\'odulo & Responsabilidad \\
+\midrule
+\texttt{desktop\_app.py} & Construye la interfaz gr\'afica, administra eventos,
+lee par\'ametros, valida datos, ejecuta la optimizaci\'on y presenta resultados. \\
+\texttt{ga\_vrp.py} & Implementa el algoritmo gen\'etico, la funci\'on de
+aptitud, la divisi\'on de rutas, la cruza OX y la mutaci\'on. \\
+\texttt{map\_utils.py} & Calcula distancias, descarga redes viales, obtiene
+rutas en calles reales y calcula distancias aproximadas con Haversine. \\
+\texttt{data/clientes.csv} & Contiene el conjunto de datos local usado como
+ejemplo de entregas regionales. \\
+\texttt{data/clientes\_nacional.csv} & Contiene el conjunto de datos nacional
+usado para probar el modo aproximado. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Descripci\'on de los m\'odulos}
+
+El archivo \texttt{desktop\_app.py} define la clase principal de la aplicaci\'on
+de escritorio. Esta clase hereda de \texttt{tk.Tk} y construye los elementos
+visuales: panel de configuraci\'on, tabla de paquetes, formulario de captura,
+botones de acci\'on, tabla de resumen y ventanas auxiliares. Tambi\'en contiene la
+funci\'on \texttt{solve\_vrp}, que conecta la interfaz con el c\'alculo de
+distancias, el algoritmo gen\'etico y la generaci\'on del mapa.
+
+El archivo \texttt{ga\_vrp.py} concentra el componente de optimizaci\'on. Incluye
+funciones para calcular la carga de una ruta, calcular la distancia recorrida,
+dividir una permutaci\'on en rutas seg\'un la capacidad del veh\'iculo, evaluar la
+aptitud de una soluci\'on y ejecutar el ciclo evolutivo. Esta separaci\'on es
+importante porque permite modificar el algoritmo sin redise\~nar la interfaz.
+
+El archivo \texttt{map\_utils.py} resuelve el componente geogr\'afico. Para rutas
+locales, obtiene una red vial con OSMnx y calcula caminos m\'as cortos con
+NetworkX. Para rutas nacionales, calcula distancias aproximadas con la f\'ormula
+Haversine. Tambi\'en convierte rutas del algoritmo en listas de coordenadas que
+pueden dibujarse en Folium.
+
+\subsection{Dise\~no de la interfaz gr\'afica}
+
+La interfaz fue dise\~nada para que el usuario pueda trabajar sin modificar el
+c\'odigo. En el panel lateral se configuran los datos globales: cantidad de
+veh\'iculos, capacidad m\'axima, coordenadas del dep\'osito, modo de distancia,
+tama\~no de poblaci\'on, n\'umero de generaciones y tasa de mutaci\'on. Esta
+distribuci\'on concentra los par\'ametros antes de ejecutar la optimizaci\'on.
+
+En el panel principal se encuentra la gesti\'on de env\'ios. El usuario puede
+cargar un CSV, guardar los datos actuales, abrir un ejemplo nacional, agregar
+filas manualmente, actualizar un destino seleccionado o eliminarlo. Tambi\'en
+puede abrir un mapa selector y agregar destinos mediante clics. Esta funci\'on
+facilita la captura de coordenadas cuando no se conoce exactamente la latitud y
+longitud de un punto.
+
+La parte inferior de la ventana muestra los resultados. La tabla de resumen
+indica el veh\'iculo asignado, el color de la ruta, los paquetes transportados,
+la carga total, la distancia, el origen, el destino y la secuencia completa de
+entrega. Adem\'as, la aplicaci\'on abre el mapa generado en el navegador y permite
+abrir una gr\'afica detallada de convergencia.
+
+\begin{figure}
+\centering
+\fbox{\begin{minipage}{0.90\textwidth}
+\centering
+Espacio para captura de pantalla de la ventana principal.\\
+Debe mostrar el panel de configuraci\'on, la tabla de paquetes y los botones de
+ejecuci\'on.
+\end{minipage}}
+\caption{Ventana principal de la aplicaci\'on de escritorio.}
+\label{fig:ventana-principal}
+\end{figure}
+
+\begin{figure}
+\centering
+\fbox{\begin{minipage}{0.90\textwidth}
+\centering
+Espacio para captura de pantalla del mapa de rutas.\\
+Debe mostrar el dep\'osito, los clientes y las rutas coloreadas por veh\'iculo.
+\end{minipage}}
+\caption{Mapa interactivo generado despu\'es de ejecutar la optimizaci\'on.}
+\label{fig:mapa-rutas}
+\end{figure}
+
+\begin{figure}
+\centering
+\fbox{\begin{minipage}{0.90\textwidth}
+\centering
+Espacio para captura de pantalla de la gr\'afica de convergencia.\\
+Debe mostrar la evoluci\'on del mejor valor de la funci\'on objetivo por
+generaci\'on.
+\end{minipage}}
+\caption{Gr\'afica de convergencia del algoritmo gen\'etico.}
+\label{fig:convergencia}
+\end{figure}
+
+\subsection{Dise\~no del algoritmo gen\'etico}
+
+El algoritmo gen\'etico es el componente central del sistema. Su objetivo es
+explorar diferentes \'ordenes de visita de los clientes y conservar aquellas
+soluciones que producen menor distancia total penalizada. El dise\~no se basa en
+una representaci\'on compacta por permutaciones, operadores adecuados para no
+repetir clientes y un mecanismo de elitismo para conservar buenas soluciones.
+
+\subsubsection{Representaci\'on de cromosomas}
+Cada cromosoma es una lista ordenada de clientes. El dep\'osito no se incluye en
+el cromosoma porque siempre aparece al inicio y al final de cada ruta. Por
+ejemplo, si existen cinco clientes, un individuo puede ser:
+
+\begin{equation}
+[4, 1, 3, 5, 2]
+\end{equation}
+
+Esta lista indica el orden global en que se intentar\'an atender los clientes.
+Despu\'es, la funci\'on de divisi\'on de rutas recorre la permutaci\'on y agrupa
+clientes hasta que agregar el siguiente exceder\'ia la capacidad $Q$. En ese
+momento se cierra la ruta, se regresa al dep\'osito y se abre una nueva ruta.
+
+\subsubsection{Poblaci\'on inicial}
+La poblaci\'on inicial se genera aleatoriamente. Cada individuo es una permutaci\'on
+distinta de los clientes. Si el tama\~no de poblaci\'on es 50, el sistema crea 50
+posibles \'ordenes de visita. Esta diversidad inicial es importante porque da al
+algoritmo diferentes zonas de b\'usqueda desde el inicio.
+
+\subsubsection{Funci\'on de aptitud}
+La funci\'on de aptitud eval\'ua la calidad de un cromosoma. Primero convierte la
+permutaci\'on en rutas, luego calcula la distancia de cada ruta y finalmente suma
+las penalizaciones. Como el objetivo es minimizar, una soluci\'on con menor costo
+penalizado es considerada mejor.
+
+\subsubsection{Selecci\'on}
+La selecci\'on se realiza tomando padres desde un grupo de los mejores individuos
+de la poblaci\'on ordenada por aptitud. Esta estrategia favorece soluciones de
+buena calidad, pero mantiene cierta variabilidad porque los padres se eligen al
+azar dentro de ese grupo superior. En la implementaci\'on se usa un tama\~no de
+grupo controlado para evitar que la b\'usqueda dependa de un solo individuo.
+
+\subsubsection{Cruza OX}
+La cruza por orden u Order Crossover (OX) es adecuada para cromosomas que son
+permutaciones. El operador selecciona un segmento del primer padre y lo copia al
+hijo. Luego recorre el segundo padre en orden y coloca los clientes faltantes en
+las posiciones vac\'ias. As\'i se preserva una parte del primer padre y parte del
+orden relativo del segundo, sin repetir clientes ni perder destinos.
+
+\subsubsection{Mutaci\'on}
+La mutaci\'on usada es por intercambio. Con una probabilidad definida por el
+usuario, el algoritmo selecciona dos posiciones del cromosoma e intercambia sus
+clientes. Este operador introduce variaci\'on y ayuda a escapar de soluciones
+estancadas. Una tasa de mutaci\'on demasiado baja puede reducir la exploraci\'on,
+mientras que una tasa demasiado alta puede volver inestable la evoluci\'on.
+
+\subsubsection{Elitismo}
+El elitismo conserva una porci\'on de los mejores individuos de una generaci\'on y
+los copia directamente a la siguiente. Esto evita perder la mejor soluci\'on
+encontrada por efectos de cruza o mutaci\'on. En la aplicaci\'on, el tama\~no de
+\'elite se calcula con base en el tama\~no de poblaci\'on, manteniendo un m\'inimo y
+un m\'aximo razonables.
+
+\subsubsection{Criterio de paro}
+El criterio de paro principal es el n\'umero de generaciones configurado por el
+usuario. En cada generaci\'on se guarda el mejor costo encontrado, lo que permite
+construir la gr\'afica de convergencia. Cuando se alcanza el n\'umero definido de
+generaciones, el algoritmo devuelve la mejor soluci\'on, su costo y el historial.
+
+\subsection{Flujo completo de ejecuci\'on}
+
+El flujo de ejecuci\'on inicia cuando el usuario presiona el bot\'on de optimizar.
+Primero, la aplicaci\'on valida que existan paquetes y que los par\'ametros sean
+num\'ericos. Despu\'es verifica que ning\'un paquete tenga exactamente las mismas
+coordenadas que el dep\'osito. A continuaci\'on, construye la lista de coordenadas
+y demandas, colocando el dep\'osito como nodo cero.
+
+Si el modo elegido es local, se calcula la separaci\'on m\'axima entre puntos. Si
+la distancia es demasiado grande, la aplicaci\'on solicita usar el modo nacional
+aproximado. Si la distancia es aceptable, se descarga o genera una red vial
+alrededor de las coordenadas. Luego se obtiene la matriz de distancias. Si el
+modo elegido es nacional, la matriz se calcula directamente con Haversine.
+
+Con la matriz de distancias lista, se ejecuta el algoritmo gen\'etico. Al final,
+la mejor permutaci\'on se divide en rutas, se calcula el resumen por veh\'iculo, se
+construye el mapa con Folium y se actualiza la interfaz. La Fig.~\ref{fig:flujo}
+resume este procedimiento.
+
+\begin{figure}
+\centering
+\fbox{\begin{minipage}{0.92\textwidth}
+\centering
+Inicio $\rightarrow$ leer par\'ametros $\rightarrow$ validar datos
+$\rightarrow$ calcular matriz de distancias $\rightarrow$ generar poblaci\'on
+$\rightarrow$ evaluar aptitud $\rightarrow$ seleccionar padres $\rightarrow$
+cruza OX $\rightarrow$ mutaci\'on $\rightarrow$ elitismo $\rightarrow$
+repetir generaciones $\rightarrow$ mostrar rutas, mapa y convergencia.
+\end{minipage}}
+\caption{Flujo general de ejecuci\'on del sistema.}
+\label{fig:flujo}
+\end{figure}
+
+\subsection{C\'alculo de distancias con OSMnx y Haversine}
+
+En modo local, el sistema usa OSMnx para obtener una red de calles manejables
+alrededor de los puntos. Cada coordenada se asocia al nodo m\'as cercano de la
+red. Posteriormente, NetworkX calcula las distancias m\'as cortas entre nodos
+usando el peso de longitud de las calles. Para mejorar la aproximaci\'on, el
+sistema agrega la distancia entre la coordenada exacta y el nodo vial m\'as
+cercano.
+
+En modo nacional, el sistema usa la f\'ormula Haversine, que estima la distancia
+entre dos puntos sobre la superficie terrestre a partir de latitud y longitud.
+La expresi\'on general es:
+
+\begin{equation}
+a = \sin^2\left(\frac{\Delta \varphi}{2}\right) +
+\cos(\varphi_1)\cos(\varphi_2)\sin^2\left(\frac{\Delta \lambda}{2}\right)
+\end{equation}
+
+\begin{equation}
+d = 2R\arcsin(\sqrt{a})
+\end{equation}
+
+donde $R$ es el radio de la Tierra, $\varphi$ representa latitud y $\lambda$
+representa longitud. Debido a que una carretera no suele seguir una l\'inea
+recta, la distancia se multiplica por un factor de carretera. En la aplicaci\'on
+se utiliza un factor de 1.25 para obtener una estimaci\'on m\'as realista que la
+distancia geod\'esica pura.
+
+\subsection{Diagramas UML y diagramas del sistema}
+
+El primer diagrama representa los casos de uso principales. El actor central es
+el usuario, quien puede configurar veh\'iculos, cargar clientes, editar la tabla,
+seleccionar destinos en el mapa, ejecutar la optimizaci\'on y consultar
+resultados.
+
+\begin{figure}
+\centering
+\fbox{\begin{minipage}{0.92\textwidth}
+\centering
+Usuario: configurar veh\'iculos; cargar CSV; editar paquetes; seleccionar
+destinos en mapa; ejecutar optimizaci\'on; consultar tabla de rutas; abrir mapa;
+abrir gr\'afica de convergencia.
+\end{minipage}}
+\caption{Diagrama textual de casos de uso del sistema.}
+\label{fig:casos-uso}
+\end{figure}
+
+El segundo diagrama resume las clases y componentes l\'ogicos. La clase
+\texttt{VRPDesktopApp} coordina la interfaz. El m\'odulo \texttt{ga\_vrp} ofrece
+funciones de optimizaci\'on y el m\'odulo \texttt{map\_utils} ofrece funciones de
+distancia y mapas. La relaci\'on principal es de uso: la interfaz invoca a los
+m\'odulos de c\'alculo cuando el usuario ejecuta la optimizaci\'on.
+
+\begin{figure}
+\centering
+\fbox{\begin{minipage}{0.92\textwidth}
+\centering
+\texttt{VRPDesktopApp} $\rightarrow$ \texttt{solve\_vrp}
+$\rightarrow$ \texttt{map\_utils} para distancias y rutas.\\
+\texttt{solve\_vrp} $\rightarrow$ \texttt{ga\_vrp} para algoritmo gen\'etico.\\
+\texttt{solve\_vrp} $\rightarrow$ \texttt{build\_map} para visualizaci\'on.
+\end{minipage}}
+\caption{Diagrama textual de componentes del sistema.}
+\label{fig:componentes}
+\end{figure}
+
+\section{Experimentaci\'on}
+
+\subsection{Ambiente de desarrollo}
+
+La aplicaci\'on fue desarrollada en Python sobre un entorno virtual local. El
+proyecto se organiz\'o en una carpeta de trabajo con archivos fuente, datos de
+prueba, cach\'e de mapas y carpeta de salida para los mapas generados. El
+ambiente de desarrollo usado para las pruebas fue una computadora personal con
+sistema operativo Windows, ejecutando la aplicaci\'on desde PowerShell mediante
+el archivo \texttt{run\_app.bat} o directamente con \texttt{python
+desktop\_app.py}.
+
+\begin{table}
+\centering
+\caption{Ambiente de software utilizado.}\label{tab:software}
+\begin{tabular}{p{4cm}p{7.4cm}}
+\toprule
+Elemento & Descripci\'on \\
+\midrule
+Lenguaje & Python \\
+Interfaz gr\'afica & Tkinter y ttk \\
+Mapas interactivos & Folium \\
+Red vial & OSMnx y OpenStreetMap \\
+Grafos y caminos m\'as cortos & NetworkX \\
+Datos tabulares & CSV y Pandas en la versi\'on Streamlit \\
+Visualizaci\'on auxiliar & Navegador web para archivos HTML generados \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Bibliotecas utilizadas}
+
+Las bibliotecas principales son \texttt{folium}, \texttt{osmnx},
+\texttt{networkx}, \texttt{pandas}, \texttt{numpy}, \texttt{streamlit} y
+\texttt{streamlit-folium}. Aunque la aplicaci\'on principal es de escritorio, se
+conserva una versi\'on Streamlit anterior. Folium se usa para producir mapas en
+HTML; OSMnx descarga o construye redes viales; NetworkX calcula caminos m\'as
+cortos; y Tkinter permite construir la interfaz local.
+
+\subsection{Configuraci\'on de par\'ametros}
+
+Los par\'ametros del algoritmo gen\'etico se definieron desde la interfaz. Para
+las pruebas base se consider\'o una poblaci\'on de 50 individuos, 100 generaciones
+y una tasa de mutaci\'on de 10\%. Estos valores permiten observar la convergencia
+sin hacer demasiado lenta la ejecuci\'on. La interfaz permite aumentar la
+poblaci\'on hasta 300, las generaciones hasta 700 y ajustar la mutaci\'on entre
+0\% y 100\%.
+
+\begin{table}
+\centering
+\caption{Par\'ametros base del algoritmo gen\'etico.}\label{tab:parametros}
+\begin{tabular}{ll}
+\toprule
+Par\'ametro & Valor base \\
+\midrule
+Tama\~no de poblaci\'on & 50 individuos \\
+N\'umero de generaciones & 100 generaciones \\
+Tasa de mutaci\'on & 0.10 \\
+Operador de cruza & OX \\
+Operador de mutaci\'on & Intercambio de dos clientes \\
+Criterio de paro & N\'umero fijo de generaciones \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Conjuntos de datos empleados}
+
+Para probar la aplicaci\'on se prepararon dos conjuntos de datos. El primero
+corresponde a entregas locales en el Istmo de Tehuantepec, Oaxaca, con ocho
+destinos y demandas entre 3 y 6 unidades. El segundo conjunto incluye destinos
+nacionales como Guadalajara, Tijuana, Canc\'un, M\'erida, Ciudad de M\'exico,
+Monterrey, Puebla y Villahermosa. El conjunto local se utiliza con el modo de
+calles reales, mientras que el nacional se utiliza con el modo aproximado.
+
+\begin{table}
+\centering
+\caption{Ejemplo de datos locales utilizados en la experimentaci\'on.}
+\begin{tabular}{llll}
+\toprule
+Destino & Latitud & Longitud & Demanda \\
+\midrule
+El Espinal & 16.485600 & -95.040300 & 5 \\
+Asunci\'on Ixtaltepec & 16.503900 & -95.061900 & 4 \\
+Ciudad Ixtepec & 16.562000 & -95.103000 & 6 \\
+La Ventosa & 16.551900 & -94.947600 & 5 \\
+Uni\'on Hidalgo & 16.472800 & -94.829900 & 4 \\
+Santa Mar\'ia Xadani & 16.361600 & -95.018900 & 3 \\
+Santo Domingo Ingenio & 16.586900 & -94.761900 & 6 \\
+San Blas Atempa & 16.326900 & -95.225600 & 4 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Procedimiento experimental}
+
+La experimentaci\'on sigui\'o un procedimiento repetible. Primero se carg\'o el
+conjunto de datos local y se revis\'o que las demandas fueran positivas. Despu\'es
+se definieron el dep\'osito, el n\'umero de veh\'iculos y la capacidad. Enseguida
+se ejecut\'o el algoritmo con los par\'ametros base y se registraron las rutas
+obtenidas. Finalmente, se analiz\'o el mapa y la gr\'afica de convergencia. El
+mismo proceso se repiti\'o con el conjunto nacional, cambiando el modo de
+distancia.
+
+\begin{enumerate}
+    \item Cargar el archivo CSV de clientes locales.
+    \item Definir el dep\'osito inicial mediante latitud y longitud.
+    \item Configurar la cantidad de veh\'iculos disponibles y la capacidad
+    m\'axima por veh\'iculo.
+    \item Seleccionar el modo de distancia local con calles OSMnx para el caso
+    regional.
+    \item Ejecutar el algoritmo gen\'etico con una poblaci\'on inicial, un n\'umero
+    de generaciones y una tasa de mutaci\'on configurables.
+    \item Revisar la tabla de rutas, el mapa generado y la gr\'afica de
+    convergencia.
+    \item Repetir la prueba con el conjunto nacional usando el modo aproximado.
+\end{enumerate}
+
+\subsection{Variables de entrada y salida}
+
+Las variables de entrada principales son el n\'umero de veh\'iculos $M$, la
+capacidad $Q$, la lista de clientes, las demandas, el dep\'osito y los par\'ametros
+del algoritmo gen\'etico. Las salidas son la mejor permutaci\'on encontrada, las
+rutas separadas por veh\'iculo, la distancia total penalizada, la factibilidad de
+la soluci\'on, el mapa interactivo y el historial de convergencia.
+
+\begin{table}
+\centering
+\caption{Variables principales de entrada y salida.}\label{tab:variables}
+\begin{tabular}{p{3.5cm}p{8cm}}
+\toprule
+Tipo & Variables \\
+\midrule
+Entrada & Veh\'iculos disponibles, capacidad, dep\'osito, destinos, demandas,
+poblaci\'on, generaciones, tasa de mutaci\'on y modo de distancia. \\
+Salida & Cromosoma ganador, rutas por veh\'iculo, carga por ruta, distancia,
+factibilidad, mapa HTML y gr\'afica de convergencia. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Resultados obtenidos}
+
+Los resultados se presentan como tablas de resumen por veh\'iculo. Debido a que
+el algoritmo gen\'etico incluye aleatoriedad, los valores exactos pueden cambiar
+entre ejecuciones. Por ello, la evaluaci\'on se enfoca en verificar que la
+soluci\'on generada cumpla la estructura esperada: rutas que salen del dep\'osito,
+atienden paquetes, regresan al dep\'osito, respetan capacidad y no exceden el
+n\'umero de veh\'iculos cuando existe una soluci\'on factible.
+
+\begin{table}
+\centering
+\caption{Formato de resultados por veh\'iculo generado por la aplicaci\'on.}
+\label{tab:resultados}
+\begin{tabular}{llll}
+\toprule
+Veh\'iculo & Paquetes & Carga total & Distancia \\
+\midrule
+1 & P1, P2, P6 & Seg\'un demandas & Calculada por matriz \\
+2 & P3, P4 & Seg\'un demandas & Calculada por matriz \\
+3 & P5, P7, P8 & Seg\'un demandas & Calculada por matriz \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+La tabla anterior representa el tipo de salida obtenida. En la aplicaci\'on real,
+cada fila tambi\'en muestra el color de la ruta, el origen, el destino y la
+secuencia completa. Esto permite verificar r\'apidamente si un veh\'iculo tiene
+demasiados paquetes o si la ruta asignada es coherente con el mapa.
+
+\subsection{Gr\'aficas de convergencia}
+
+La gr\'afica de convergencia muestra el mejor valor de la funci\'on objetivo en
+cada generaci\'on. En una ejecuci\'on t\'ipica, el costo disminuye durante las
+primeras generaciones porque la poblaci\'on inicial contiene soluciones
+aleatorias y el algoritmo encuentra combinaciones mejores. Despu\'es, la curva
+puede estabilizarse cuando las mejoras se vuelven menos frecuentes.
+
+Esta gr\'afica permite tomar decisiones sobre los par\'ametros. Si la curva sigue
+mejorando al final de las generaciones, conviene aumentar el n\'umero de
+generaciones. Si se estanca muy pronto, se puede aumentar la mutaci\'on o la
+poblaci\'on para explorar m\'as soluciones. Si la curva es muy irregular, una tasa
+de mutaci\'on demasiado alta podr\'ia estar afectando la conservaci\'on de buenas
+soluciones.
+
+\subsection{Mapas generados}
+
+El mapa generado por la aplicaci\'on representa visualmente la soluci\'on. El
+dep\'osito aparece con un marcador especial y cada veh\'iculo se dibuja con un
+color diferente. En modo local, las rutas siguen la red vial calculada con
+OSMnx. En modo nacional, las rutas se representan como l\'ineas directas entre
+puntos, ya que se trata de una aproximaci\'on y no de una red carretera completa.
+
+El mapa cumple dos funciones. Primero, permite validar visualmente la soluci\'on:
+si una ruta parece incoherente, el usuario puede revisar los datos o los
+par\'ametros. Segundo, comunica el resultado de forma m\'as clara que una tabla,
+especialmente para usuarios que desean identificar zonas geogr\'aficas de reparto.
+
+\subsection{Discusi\'on de resultados}
+
+Los resultados muestran que el algoritmo gen\'etico es adecuado para construir
+soluciones aproximadas del VRP en el contexto del proyecto. Su principal ventaja
+es la flexibilidad: puede trabajar con diferentes cantidades de clientes,
+veh\'iculos y capacidades sin cambiar el modelo completo. Adem\'as, la gr\'afica de
+convergencia permite observar el comportamiento del proceso de b\'usqueda.
+
+La integraci\'on con mapas tambi\'en es una ventaja importante. En modo local, el
+uso de calles reales aporta una interpretaci\'on m\'as cercana a la operaci\'on
+log\'istica. En modo nacional, la aproximaci\'on por Haversine permite hacer
+pruebas con puntos lejanos sin descargar redes demasiado grandes.
+
+Entre las limitaciones observadas se encuentra la dependencia de internet para
+descargar datos de OpenStreetMap en modo local. Tambi\'en se observ\'o que, si los
+puntos est\'an muy separados, la descarga de una red vial local deja de ser
+pr\'actica. Otra limitaci\'on es que el algoritmo gen\'etico no garantiza el \'optimo
+global, por lo que diferentes ejecuciones pueden producir rutas ligeramente
+distintas.
+
+\section{Conclusiones}
+
+El proyecto cumpli\'o el objetivo general de desarrollar una aplicaci\'on capaz de
+optimizar rutas de reparto mediante un algoritmo gen\'etico. La soluci\'on permite
+configurar una flota, cargar clientes, definir demandas, calcular distancias,
+ejecutar la optimizaci\'on y visualizar los resultados en tablas, mapas y
+gr\'aficas. Esto demuestra que el sistema no se limita al c\'alculo interno, sino
+que ofrece una experiencia completa de uso para analizar escenarios de reparto.
+
+Los objetivos espec\'ificos tambi\'en se cumplieron. El problema fue modelado como
+un VRP con dep\'osito, clientes, demandas y capacidad. Se implement\'o un algoritmo
+gen\'etico con cromosomas por permutaci\'on, poblaci\'on inicial aleatoria, funci\'on
+de aptitud penalizada, cruza OX, mutaci\'on por intercambio y elitismo. Adem\'as,
+se dise\~n\'o una interfaz gr\'afica que permite administrar los datos y se
+incluyeron mapas interactivos para interpretar las rutas resultantes.
+
+El algoritmo gen\'etico aport\'o una estrategia de b\'usqueda flexible para un
+problema combinatorio complejo. Su uso permiti\'o generar soluciones aproximadas
+sin revisar todas las combinaciones posibles. Tambi\'en permiti\'o visualizar la
+evoluci\'on de la soluci\'on mediante la gr\'afica de convergencia. Este aspecto es
+relevante porque ayuda a comprender que la optimizaci\'on no ocurre en un solo
+paso, sino mediante una mejora progresiva de la poblaci\'on.
+
+La aplicaci\'on desarrollada presenta varias ventajas. La primera es que integra
+en una sola herramienta la captura de datos, la optimizaci\'on y la visualizaci\'on.
+La segunda es que ofrece dos modos de distancia: uno local con calles reales y
+otro nacional aproximado. La tercera es que permite modificar par\'ametros del
+algoritmo sin cambiar el c\'odigo, lo cual facilita la experimentaci\'on. La cuarta
+es que muestra resultados comprensibles para el usuario, no solo valores
+num\'ericos.
+
+Tambi\'en se identificaron limitaciones. El modo local depende de datos de
+OpenStreetMap y puede requerir conexi\'on a internet. El modo nacional no calcula
+rutas carreteras exactas, sino distancias aproximadas. El algoritmo gen\'etico,
+por su naturaleza, no garantiza encontrar el \'optimo global. Adem\'as, el modelo
+actual considera veh\'iculos homog\'eneos, un solo dep\'osito y no incluye ventanas
+de tiempo, horarios de servicio, tr\'afico, prioridad de clientes ni costos
+variables.
+
+Como trabajo futuro se propone ampliar el modelo con ventanas de tiempo, m\'ultiples
+dep\'ositos, veh\'iculos con diferentes capacidades, tiempos de descarga, costos de
+combustible y restricciones de horario. Tambi\'en podr\'ia integrarse una API de
+mapas para obtener rutas y tiempos de viaje m\'as precisos. Otra mejora relevante
+ser\'ia comparar el algoritmo gen\'etico con otras t\'ecnicas de optimizaci\'on,
+como b\'usqueda tab\'u, recocido simulado, colonias de hormigas o algoritmos
+exactos para instancias peque\~nas. Finalmente, se podr\'ia automatizar la
+exportaci\'on de reportes en PDF para documentar cada ejecuci\'on.
+
+\section*{Evaluaci\'on Ordinaria}
+
+El reporte cumple con los apartados solicitados para la Evaluaci\'on Ordinaria:
+Introducci\'on, Objetivos, Dise\~no, Experimentaci\'on y Conclusiones. Adem\'as,
+presenta la aplicaci\'on bajo una estructura compatible con la plantilla LNCS de
+Springer, usando resumen, palabras clave, secciones formales, ecuaci\'on de
+funci\'on objetivo y tabla de datos experimentales.
+
+\begin{credits}
+\subsubsection{\ackname} Se agradece el uso de herramientas de c\'odigo abierto
+como Python, Tkinter, Folium, OSMnx y NetworkX, que permitieron construir y
+probar la aplicaci\'on descrita en este reporte.
+
+\subsubsection{\discintname}
+El autor declara que no existen intereses en competencia relacionados con el
+contenido de este reporte.
+\end{credits}
+
+% ---- Bibliography ----
+%
+% BibTeX users should specify bibliography style 'splncs04'.
+% References will then be sorted and formatted in the correct style.
+%
+% \bibliographystyle{splncs04}
+% \bibliography{mybibliography}
+%
+\begin{thebibliography}{8}
+
+\bibitem{toth2014}
+Toth, P., Vigo, D.: Vehicle Routing: Problems, Methods, and Applications.
+Society for Industrial and Applied Mathematics, Philadelphia (2014)
+
+\bibitem{goldberg1989}
+Goldberg, D.E.: Genetic Algorithms in Search, Optimization, and Machine
+Learning. Addison-Wesley, Boston (1989)
+
+\bibitem{osmnx}
+Boeing, G.: OSMnx: New methods for acquiring, constructing, analyzing, and
+visualizing complex street networks. Computers, Environment and Urban Systems
+65, 126--139 (2017)
+
+\bibitem{folium}
+Folium contributors: Folium documentation. \url{https://python-visualization.github.io/folium/}
+
+\bibitem{networkx}
+Hagberg, A.A., Schult, D.A., Swart, P.J.: Exploring network structure,
+dynamics, and function using NetworkX. In: Proceedings of the 7th Python in
+Science Conference, pp. 11--15 (2008)
+
+\end{thebibliography}
+
+\end{document}

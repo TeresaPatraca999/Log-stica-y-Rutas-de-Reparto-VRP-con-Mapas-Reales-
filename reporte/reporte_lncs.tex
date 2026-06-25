@@ -1,0 +1,227 @@
+\documentclass[runningheads]{llncs}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[spanish]{babel}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{url}
+
+\title{Aplicación para la Optimización de Rutas de Reparto mediante un Algoritmo Genético}
+\titlerunning{Optimización de Rutas de Reparto}
+
+\author{Nombre del estudiante}
+\authorrunning{Nombre del estudiante}
+\institute{Evaluación Ordinaria}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Este reporte presenta el proceso de creación de una aplicación de escritorio para resolver una instancia del Problema de Ruteo de Vehículos (Vehicle Routing Problem, VRP). La aplicación permite registrar vehículos, definir un depósito, cargar o editar paquetes, calcular rutas de reparto y visualizar los resultados en mapas interactivos. La solución implementa un algoritmo genético con representación por permutaciones, cruza de orden (OX), mutación por intercambio y penalizaciones por exceder la capacidad de carga o la cantidad de vehículos disponibles. El desarrollo siguió una metodología científica: se identificó el problema, se formularon objetivos, se diseñó la arquitectura, se experimentó con datos locales y nacionales, y se evaluaron los resultados obtenidos.
+
+\keywords{VRP \and Algoritmo genético \and Optimización \and Logística \and Python}
+\end{abstract}
+
+\section{Introducción}
+
+La distribución eficiente de mercancías es un problema relevante en logística, transporte y administración de operaciones. En un escenario de reparto, una empresa debe decidir qué vehículo visita cada cliente, en qué orden lo hace y cómo regresa al punto de origen. Esta decisión impacta directamente en la distancia recorrida, el tiempo de entrega, el uso de combustible y la capacidad operativa de la flotilla.
+
+El problema abordado corresponde al Problema de Ruteo de Vehículos (VRP), una generalización del problema del viajante y uno de los modelos clásicos de optimización logística \cite{toth2014vehicle}. En el VRP existe un depósito central, un conjunto de clientes con demanda y una cantidad limitada de vehículos con capacidad máxima. El objetivo es construir rutas que inicien y terminen en el depósito, atiendan a los clientes y reduzcan la distancia total recorrida, respetando restricciones operativas.
+
+Debido a que el VRP es un problema combinatorio complejo, el número de soluciones posibles crece rápidamente cuando aumenta la cantidad de clientes. Por esta razón, se eligió un algoritmo genético como método aproximado de búsqueda \cite{goldberg1989genetic}. Este tipo de algoritmo se inspira en procesos evolutivos y permite explorar distintas combinaciones de rutas mediante población, selección, cruza, mutación y conservación de las mejores soluciones.
+
+La aplicación desarrollada fue implementada en Python. Primero se conservó una versión web con Streamlit y después se construyó una versión principal de escritorio con Tkinter. Para el tratamiento geográfico se usaron Folium, OSMnx y NetworkX. OSMnx descarga redes viales desde OpenStreetMap \cite{openstreetmap2017,boeing2017osmnx} y NetworkX calcula rutas mínimas sobre grafos \cite{networkx2008}. Además, se agregó un modo nacional aproximado basado en la distancia de Haversine multiplicada por un factor de carretera, útil cuando los destinos están demasiado separados para descargar una red vial local completa.
+
+\section{Objetivos}
+
+\subsection{Objetivo general}
+
+Desarrollar una aplicación de escritorio capaz de calcular y visualizar rutas de reparto para un conjunto de clientes, considerando capacidad de vehículos, cantidad de unidades disponibles y distancia total recorrida.
+
+\subsection{Objetivos específicos}
+
+\begin{itemize}
+    \item Modelar el problema de reparto como una instancia del VRP con depósito, clientes, demandas y vehículos.
+    \item Implementar un algoritmo genético que busque soluciones de bajo costo mediante permutaciones de clientes.
+    \item Incorporar restricciones de capacidad y cantidad de vehículos mediante una función objetivo penalizada.
+    \item Calcular distancias con dos estrategias: calles reales para casos locales y aproximación geográfica para casos nacionales.
+    \item Construir una interfaz que permita cargar datos, editar paquetes, seleccionar puntos desde un mapa y ejecutar la optimización.
+    \item Presentar resultados en tablas, mapas y gráficas de convergencia para facilitar la interpretación de la solución.
+\end{itemize}
+
+\section{Diseño}
+
+\subsection{Metodología de desarrollo}
+
+El proceso de creación siguió una metodología experimental e incremental. Primero se definió el fenómeno a estudiar: la asignación eficiente de rutas de reparto. Después se formuló el problema matemático, se diseñó una solución computacional, se implementaron módulos independientes y finalmente se evaluó el comportamiento de la aplicación usando datos de prueba.
+
+La hipótesis de trabajo fue la siguiente: un algoritmo genético con representación por permutaciones puede encontrar rutas factibles y de bajo costo para instancias pequeñas y medianas del VRP, siempre que la función objetivo penalice las soluciones que violan las restricciones de capacidad o de número de vehículos.
+
+\subsection{Arquitectura de la aplicación}
+
+El proyecto se organizó en tres componentes principales:
+
+\begin{itemize}
+    \item \texttt{desktop\_app.py}: contiene la interfaz de escritorio, lectura y escritura de CSV, selección de coordenadas en mapa, ejecución en segundo plano, tabla de resultados, generación del mapa final y gráfica de convergencia.
+    \item \texttt{ga\_vrp.py}: contiene el algoritmo genético, la función de aptitud, la división de rutas por capacidad, la cruza OX y la mutación por intercambio.
+    \item \texttt{map\_utils.py}: contiene las funciones geográficas para construir grafos viales, calcular matrices de distancia, estimar distancias nacionales y convertir rutas a coordenadas para su visualización.
+\end{itemize}
+
+Esta separación permite que la interfaz, el algoritmo y el cálculo geográfico evolucionen de forma independiente. La interfaz llama a las funciones de optimización y de mapas, pero no mezcla la lógica del algoritmo con los elementos visuales.
+
+\subsection{Modelo del problema}
+
+Sea $V=\{0,1,2,\ldots,n\}$ el conjunto de nodos, donde $0$ representa el depósito y los demás nodos representan clientes. Cada cliente $i$ tiene una demanda $d_i$. Se dispone de $M$ vehículos con capacidad máxima $Q$. La matriz $C=(c_{ij})$ almacena la distancia entre cada par de nodos.
+
+La aplicación busca minimizar la función objetivo:
+
+\begin{equation}
+Z = \sum_{k=1}^{r} \operatorname{Distancia}(R_k) + P,
+\end{equation}
+
+donde $R_k$ es la ruta del vehículo $k$, $r$ es el número de rutas generadas y $P$ es una penalización. La distancia de una ruta se calcula como:
+
+\begin{equation}
+\operatorname{Distancia}(R_k)=\sum_{i=1}^{|R_k|-1} c_{R_k(i),R_k(i+1)}.
+\end{equation}
+
+La penalización se activa cuando se excede el número de vehículos o la capacidad:
+
+\begin{equation}
+P = 1{,}000{,}000 \cdot \max(0,r-M) + 1{,}000{,}000 \cdot \sum_{k=1}^{r} \max(0,L_k-Q),
+\end{equation}
+
+donde $L_k$ es la carga total de la ruta $k$.
+
+\subsection{Representación de soluciones}
+
+Cada individuo del algoritmo genético se representa como una permutación de clientes. Por ejemplo, el cromosoma:
+
+\begin{equation}
+[3,1,4,2,5]
+\end{equation}
+
+indica el orden sugerido de visita. Posteriormente, la aplicación divide esta permutación en rutas de acuerdo con la capacidad $Q$. Cuando agregar el siguiente cliente supera la capacidad, se cierra la ruta actual regresando al depósito y se abre una nueva ruta. Con ello, la solución final queda expresada como varias rutas del tipo:
+
+\begin{equation}
+0 \rightarrow i \rightarrow j \rightarrow 0.
+\end{equation}
+
+\subsection{Algoritmo genético}
+
+El algoritmo implementado utiliza los siguientes pasos:
+
+\begin{enumerate}
+    \item Crear una población inicial con permutaciones aleatorias de clientes.
+    \item Evaluar cada individuo usando la función objetivo penalizada.
+    \item Ordenar la población por costo y conservar una élite de mejores individuos.
+    \item Seleccionar padres desde el grupo de mejores candidatos.
+    \item Generar hijos mediante cruza de orden OX, adecuada para conservar permutaciones válidas.
+    \item Aplicar mutación por intercambio de dos clientes con cierta probabilidad.
+    \item Repetir el proceso durante el número de generaciones configurado.
+\end{enumerate}
+
+La cruza OX conserva un segmento de un padre y completa el resto del cromosoma siguiendo el orden del segundo padre, evitando clientes repetidos o faltantes. La mutación intercambia dos posiciones del cromosoma, lo cual introduce variabilidad sin romper la estructura de permutación.
+
+\subsection{Diseño de la interfaz}
+
+La aplicación de escritorio permite configurar:
+
+\begin{itemize}
+    \item cantidad de vehículos disponibles $M$;
+    \item capacidad máxima $Q$;
+    \item ciudad o región para rutas locales;
+    \item coordenadas del depósito;
+    \item tipo de ruta: local con calles OSMnx o nacional aproximado;
+    \item tamaño de población, generaciones y tasa de mutación.
+\end{itemize}
+
+También permite cargar datos desde archivos CSV, guardar cambios, agregar clientes manualmente y seleccionar coordenadas desde un mapa interactivo. Al finalizar la optimización, la aplicación muestra una tabla por vehículo con paquetes asignados, carga, distancia y secuencia de visita. Además, genera un mapa HTML con colores por ruta y una gráfica de convergencia del valor de la función objetivo.
+
+\section{Experimentación}
+
+\subsection{Datos utilizados}
+
+Se usaron dos conjuntos de datos incluidos en el proyecto. El primero representa entregas locales en la región del Istmo de Tehuantepec, Oaxaca. El segundo contiene destinos nacionales para probar el modo aproximado.
+
+\begin{table}
+\centering
+\caption{Instancias de prueba incluidas en la aplicación}
+\begin{tabular}{llll}
+\toprule
+Instancia & Archivo & Clientes & Modo recomendado \\
+\midrule
+Local & \texttt{data/clientes.csv} & 8 & Calles reales con OSMnx \\
+Nacional & \texttt{data/clientes\_nacional.csv} & 8 & Aproximación geográfica \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+El archivo local incluye destinos como El Espinal, Asunción Ixtaltepec, Ciudad Ixtepec, La Ventosa, Unión Hidalgo, Santa María Xadani, Santo Domingo Ingenio y San Blas Atempa. El archivo nacional incluye ciudades como Guadalajara, Tijuana, Cancún, Mérida, Ciudad de México, Monterrey, Puebla y Villahermosa.
+
+\subsection{Configuración experimental}
+
+Para la evaluación ordinaria se consideró una configuración base con $M=2$ vehículos, capacidad $Q=20$, población de 50 individuos, 100 generaciones y tasa de mutación de 10\%. Estos valores corresponden a parámetros manejables para observar la convergencia sin hacer demasiado lento el cálculo.
+
+\begin{table}
+\centering
+\caption{Parámetros base del algoritmo}
+\begin{tabular}{ll}
+\toprule
+Parámetro & Valor \\
+\midrule
+Vehículos disponibles ($M$) & 2 \\
+Capacidad por vehículo ($Q$) & 20 \\
+Tamaño de población & 50 \\
+Generaciones & 100 \\
+Tasa de mutación & 0.10 \\
+Penalización base & 1,000,000 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Procedimiento}
+
+El procedimiento experimental fue:
+
+\begin{enumerate}
+    \item Cargar el conjunto de clientes desde el archivo CSV.
+    \item Definir el depósito mediante latitud y longitud.
+    \item Construir la matriz de distancias. En modo local se descarga una red vial alrededor de los puntos y se usa Dijkstra sobre el grafo. En modo nacional se calcula la distancia de Haversine multiplicada por un factor de carretera de 1.25.
+    \item Ejecutar el algoritmo genético con los parámetros definidos.
+    \item Dividir el mejor cromosoma en rutas por capacidad.
+    \item Evaluar si la solución respeta $M$ y $Q$.
+    \item Generar mapa, tabla resumen y gráfica de convergencia.
+\end{enumerate}
+
+\subsection{Resultados esperados}
+
+En la instancia local, se espera que la aplicación genere rutas que sigan calles reales y que todos los vehículos salgan y regresen al depósito. La tabla de resultados permite verificar que la carga de cada vehículo no exceda $Q$ cuando existe una solución factible. La gráfica de convergencia debe mostrar una disminución del mejor valor encontrado o, al menos, estabilidad cuando el algoritmo ya no encuentra mejoras.
+
+En la instancia nacional, el resultado no representa rutas carretera por carretera, sino una aproximación útil para comparar asignación de destinos lejanos. Este modo evita descargar redes viales muy grandes y permite realizar pruebas rápidas de cobertura nacional.
+
+\subsection{Análisis}
+
+El diseño por penalizaciones permite que el algoritmo explore soluciones que temporalmente violan restricciones, pero las vuelve menos competitivas por su alto costo. Esto evita que el programa falle ante combinaciones difíciles y permite mostrar al usuario cuando una solución no es completamente factible.
+
+La representación por permutaciones simplifica el algoritmo porque cada cliente aparece exactamente una vez en el cromosoma. La división posterior por capacidad transforma el orden lineal en rutas de vehículos. Esta estrategia es práctica para instancias pequeñas y medianas, aunque puede no encontrar el óptimo global en todos los casos debido a la naturaleza aproximada del algoritmo genético.
+
+La inclusión de mapas mejora la interpretación del resultado. La tabla numérica indica carga y distancia, mientras que el mapa permite observar la distribución espacial de las rutas. La gráfica de convergencia aporta evidencia experimental sobre el comportamiento del algoritmo durante las generaciones.
+
+\section{Conclusiones}
+
+Se desarrolló una aplicación funcional para resolver y visualizar rutas de reparto bajo el modelo VRP. El sistema permite configurar vehículos, capacidad, depósito, clientes y parámetros evolutivos. Además, integra cálculo de distancias reales para casos locales y una aproximación geográfica para casos nacionales.
+
+La metodología científica permitió organizar el trabajo en etapas: identificación del problema, formulación de objetivos, diseño de la solución, experimentación con datos de prueba y evaluación de los resultados. Esta estructura ayudó a conectar la implementación con el fundamento matemático y logístico del problema.
+
+El algoritmo genético resultó adecuado para obtener soluciones razonables en tiempos prácticos. Su combinación de elitismo, cruza OX y mutación por intercambio mantiene cromosomas válidos y permite mejorar la solución a través de generaciones. Sin embargo, al tratarse de una metaheurística, no garantiza encontrar siempre la solución óptima global.
+
+Como trabajo futuro se podrían agregar ventanas de tiempo, costos por vehículo, múltiples depósitos, comparación con otros métodos heurísticos y exportación automática de reportes. También sería conveniente realizar varias ejecuciones por instancia para comparar promedios, desviación estándar y sensibilidad ante cambios de población, generaciones y mutación.
+
+\bibliographystyle{splncs04}
+\bibliography{referencias}
+
+\end{document}

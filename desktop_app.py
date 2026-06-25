@@ -1,15 +1,19 @@
 import csv
+import json
 import os
 import threading
 import webbrowser
 import tkinter as tk
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from tkinter import filedialog, messagebox, ttk
+from urllib.parse import urlparse
 
 import folium
 
 from ga_vrp import genetic_algorithm, route_distance, route_load, split_routes
 from map_utils import (
     create_graph,
+    create_graph_around_coords,
     get_direct_route_latlon,
     get_distance_matrix,
     get_national_distance_matrix,
@@ -21,6 +25,7 @@ from map_utils import (
 DEFAULT_DATA = os.path.join("data", "clientes.csv")
 NATIONAL_DATA = os.path.join("data", "clientes_nacional.csv")
 MAP_OUTPUT = os.path.join("output", "vrp_routes.html")
+SELECT_MAP_OUTPUT = os.path.join("output", "select_destination.html")
 COLORS = [
     "#e53935",
     "#00a6ff",
@@ -44,6 +49,9 @@ class VRPDesktopApp(tk.Tk):
         self.history = []
         self.map_path = None
         self.worker = None
+        self.selector_server = None
+        self.selector_count = 1
+        self.last_summary = []
         self.solution_text = tk.StringVar(value="Solucion: aun no calculada.")
 
         self._build_layout()
@@ -78,11 +86,11 @@ class VRPDesktopApp(tk.Tk):
 
         ttk.Label(parent, text="Ciudad del mapa real").pack(anchor="w", pady=(8, 0))
         self.city = ttk.Entry(parent, width=34)
-        self.city.insert(0, "Oaxaca de Juarez, Oaxaca, Mexico")
+        self.city.insert(0, "Istmo de Tehuantepec, Oaxaca, Mexico")
         self.city.pack(fill="x")
 
-        self.depot_lat = self._number_entry(parent, "Latitud del deposito", "17.060000")
-        self.depot_lon = self._number_entry(parent, "Longitud del deposito", "-96.725000")
+        self.depot_lat = self._number_entry(parent, "Latitud del deposito", "16.436000")
+        self.depot_lon = self._number_entry(parent, "Longitud del deposito", "-95.019000")
         ttk.Label(parent, text="Tipo de ruta").pack(anchor="w", pady=(8, 0))
         self.route_mode = ttk.Combobox(
             parent,
@@ -94,7 +102,7 @@ class VRPDesktopApp(tk.Tk):
         self.route_mode.pack(fill="x")
         ttk.Label(
             parent,
-            text="Local usa calles reales. Nacional usa aproximacion entre estados.",
+            text="Local usa calles reales alrededor del deposito y paquetes. Nacional usa aproximacion.",
             wraplength=250,
         ).pack(anchor="w", pady=(4, 0))
 
@@ -108,11 +116,12 @@ class VRPDesktopApp(tk.Tk):
         ttk.Label(parent, text="Mutacion: intercambio de dos paquetes").pack(anchor="w")
 
         ttk.Separator(parent).pack(fill="x", pady=12)
-        self.run_button = ttk.Button(parent, text="Ejecutar Optimizacion", command=self.run_optimization)
-        self.run_button.pack(fill="x", pady=(4, 8))
-
-        self.open_map_button = ttk.Button(parent, text="Abrir mapa interactivo", command=self.open_map, state="disabled")
-        self.open_map_button.pack(fill="x")
+        ttk.Label(parent, text="Funcion objetivo", font=("Segoe UI", 11, "bold")).pack(anchor="w")
+        ttk.Label(
+            parent,
+            text="Minimizar la suma de distancias de todos los camiones. Penaliza exceso de capacidad Q o de vehiculos M.",
+            wraplength=250,
+        ).pack(anchor="w", pady=(4, 0))
 
         self.status = tk.StringVar(value="Listo.")
         ttk.Label(parent, textvariable=self.status, wraplength=250).pack(anchor="w", pady=16)
@@ -123,9 +132,20 @@ class VRPDesktopApp(tk.Tk):
         top.columnconfigure(0, weight=1)
 
         ttk.Label(top, text="Gestion de envios", font=("Segoe UI", 13, "bold")).grid(row=0, column=0, sticky="w")
-        ttk.Button(top, text="Cargar CSV", command=self.load_csv).grid(row=0, column=1, padx=(8, 0))
-        ttk.Button(top, text="Guardar CSV", command=self.save_csv).grid(row=0, column=2, padx=(8, 0))
-        ttk.Button(top, text="Ejemplo nacional", command=self.load_national_example).grid(row=0, column=3, padx=(8, 0))
+        self.run_button = ttk.Button(top, text="Ejecutar Optimizacion", command=self.run_optimization)
+        self.run_button.grid(row=0, column=1, padx=(8, 0))
+        ttk.Button(top, text="Cargar CSV", command=self.load_csv).grid(row=0, column=2, padx=(8, 0))
+        ttk.Button(top, text="Guardar CSV", command=self.save_csv).grid(row=0, column=3, padx=(8, 0))
+        ttk.Button(top, text="Ejemplo nacional", command=self.load_national_example).grid(row=0, column=4, padx=(8, 0))
+        self.open_map_button = ttk.Button(top, text="Abrir mapa", command=self.open_map, state="disabled")
+        self.open_map_button.grid(row=0, column=5, padx=(8, 0))
+        self.open_chart_button = ttk.Button(
+            top,
+            text="Grafica",
+            command=self.open_detailed_chart,
+            state="disabled",
+        )
+        self.open_chart_button.grid(row=0, column=6, padx=(8, 0))
 
         table_frame = ttk.Frame(parent)
         table_frame.grid(row=1, column=0, sticky="nsew", pady=(8, 12))
@@ -161,21 +181,21 @@ class VRPDesktopApp(tk.Tk):
         ttk.Button(form, text="Agregar", command=self.add_shipment).grid(row=0, column=8, padx=(8, 0))
         ttk.Button(form, text="Actualizar", command=self.update_selected_shipment).grid(row=0, column=9, padx=(8, 0))
         ttk.Button(form, text="Eliminar", command=self.delete_selected_shipment).grid(row=0, column=10, padx=(8, 0))
+        ttk.Button(form, text="Elegir en mapa", command=self.open_coordinate_selector).grid(
+            row=0, column=11, padx=(8, 0)
+        )
 
     def _build_results(self, parent):
         results = ttk.Frame(parent)
         results.grid(row=3, column=0, sticky="nsew")
-        results.columnconfigure(0, weight=2)
-        results.columnconfigure(1, weight=1)
+        results.columnconfigure(0, weight=1)
         results.rowconfigure(2, weight=1)
 
         ttk.Label(results, text="Resumen por vehiculo", font=("Segoe UI", 13, "bold")).grid(
             row=0, column=0, sticky="w"
         )
-        ttk.Label(results, text="Convergencia", font=("Segoe UI", 13, "bold")).grid(row=0, column=1, sticky="w")
-
         ttk.Label(results, textvariable=self.solution_text, wraplength=760).grid(
-            row=1, column=0, columnspan=2, sticky="ew", pady=(6, 8)
+            row=1, column=0, sticky="ew", pady=(6, 8)
         )
 
         summary_columns = ("vehiculo", "color", "paquetes", "carga", "distancia", "salida", "destino", "ruta")
@@ -192,10 +212,7 @@ class VRPDesktopApp(tk.Tk):
         ]:
             self.summary_table.heading(column, text=label)
             self.summary_table.column(column, width=width, anchor="center")
-        self.summary_table.grid(row=2, column=0, sticky="nsew", padx=(0, 12))
-
-        self.chart = tk.Canvas(results, height=220, background="white", highlightthickness=1, highlightbackground="#cccccc")
-        self.chart.grid(row=2, column=1, sticky="nsew")
+        self.summary_table.grid(row=2, column=0, sticky="nsew")
 
     def _number_entry(self, parent, label, value):
         ttk.Label(parent, text=label).pack(anchor="w", pady=(8, 0))
@@ -386,10 +403,10 @@ class VRPDesktopApp(tk.Tk):
 
         self.run_button.configure(state="disabled")
         self.open_map_button.configure(state="disabled")
+        self.open_chart_button.configure(state="disabled")
         self.status.set("Calculando rutas...")
         self.solution_text.set("Solucion: calculando cromosoma y rutas...")
         self.summary_table.delete(*self.summary_table.get_children())
-        self.chart.delete("all")
 
         data = [row.copy() for row in self.shipments]
         self.worker = threading.Thread(target=self._optimization_worker, args=(settings, data), daemon=True)
@@ -420,8 +437,10 @@ class VRPDesktopApp(tk.Tk):
     def _show_result(self, result):
         self.run_button.configure(state="normal")
         self.open_map_button.configure(state="normal")
+        self.open_chart_button.configure(state="normal")
         self.map_path = result["map_path"]
         self.history = result["history"]
+        self.last_summary = result["summary"]
         self.solution_text.set(result["solution_text"])
 
         for index, row in enumerate(result["summary"]):
@@ -440,40 +459,124 @@ class VRPDesktopApp(tk.Tk):
                 ),
             )
 
-        self.draw_convergence(self.history)
         self.status.set(result["message"])
         self.open_map()
-
-    def draw_convergence(self, history):
-        self.chart.delete("all")
-        width = max(self.chart.winfo_width(), 320)
-        height = max(self.chart.winfo_height(), 220)
-        pad = 30
-
-        if not history:
-            self.chart.create_text(width / 2, height / 2, text="Sin datos de convergencia")
-            return
-
-        min_y = min(history)
-        max_y = max(history)
-        span = max(max_y - min_y, 1)
-        points = []
-        for i, value in enumerate(history):
-            x = pad + (width - 2 * pad) * i / max(len(history) - 1, 1)
-            y = height - pad - (height - 2 * pad) * (value - min_y) / span
-            points.append((x, y))
-
-        self.chart.create_line(pad, height - pad, width - pad, height - pad, fill="#888888")
-        self.chart.create_line(pad, pad, pad, height - pad, fill="#888888")
-        for i in range(len(points) - 1):
-            self.chart.create_line(*points[i], *points[i + 1], fill="#2563eb", width=2)
-        self.chart.create_text(width / 2, 14, text="Mejor distancia por generacion")
-        self.chart.create_text(pad, height - 12, text="1")
-        self.chart.create_text(width - pad, height - 12, text=str(len(history)))
 
     def open_map(self):
         if self.map_path and os.path.exists(self.map_path):
             webbrowser.open(os.path.abspath(self.map_path))
+
+    def open_coordinate_selector(self):
+        try:
+            settings = self.read_settings()
+        except ValueError:
+            settings = {"depot_lat": 16.436000, "depot_lon": -95.019000}
+
+        port = self.ensure_selector_server()
+        build_selector_map(settings, port)
+        webbrowser.open(os.path.abspath(SELECT_MAP_OUTPUT))
+        self.status.set("Haz clic varias veces en el mapa para agregar varios destinos.")
+
+    def ensure_selector_server(self):
+        if self.selector_server:
+            return self.selector_server.server_port
+
+        app = self
+
+        class SelectionHandler(BaseHTTPRequestHandler):
+            def do_OPTIONS(self):
+                self.send_response(204)
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")
+                self.send_header("Access-Control-Allow-Headers", "Content-Type")
+                self.end_headers()
+
+            def do_POST(self):
+                if urlparse(self.path).path != "/select":
+                    self.send_response(404)
+                    self.end_headers()
+                    return
+
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                lat = float(payload["lat"])
+                lon = float(payload["lon"])
+                app.after(0, app.add_selected_destination, lat, lon)
+
+                self.send_response(200)
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(b'{"ok": true}')
+
+            def log_message(self, _format, *_args):
+                return
+
+        server = HTTPServer(("127.0.0.1", 0), SelectionHandler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        self.selector_server = server
+        return server.server_port
+
+    def fill_selected_coordinates(self, lat, lon):
+        self.lat_entry.delete(0, "end")
+        self.lat_entry.insert(0, f"{lat:.6f}")
+        self.lon_entry.delete(0, "end")
+        self.lon_entry.insert(0, f"{lon:.6f}")
+        self.status.set(f"Coordenadas seleccionadas: {lat:.6f}, {lon:.6f}")
+
+    def add_selected_destination(self, lat, lon):
+        try:
+            demand = float(self.demand_entry.get())
+        except ValueError:
+            demand = 1.0
+
+        if demand <= 0:
+            demand = 1.0
+
+        destination = self.destination_entry.get().strip()
+        if not destination:
+            destination = f"Destino mapa {self.selector_count}"
+
+        self.shipments.append(
+            {
+                "destino": destination,
+                "lat": lat,
+                "lon": lon,
+                "demanda": demand,
+            }
+        )
+        self.selector_count += 1
+        self.fill_selected_coordinates(lat, lon)
+        self.destination_entry.delete(0, "end")
+        self.destination_entry.insert(0, f"Destino mapa {self.selector_count}")
+        self.refresh_shipment_table()
+        self.status.set(f"Destino agregado desde mapa: {lat:.6f}, {lon:.6f}")
+
+    def open_detailed_chart(self):
+        if not self.history:
+            messagebox.showinfo("Sin datos", "Ejecuta primero la optimizacion.")
+            return
+
+        window = tk.Toplevel(self)
+        window.title("Grafica detallada")
+        window.geometry("980x620")
+
+        canvas = tk.Canvas(window, background="white")
+        x_scroll = ttk.Scrollbar(window, orient="horizontal", command=canvas.xview)
+        y_scroll = ttk.Scrollbar(window, orient="vertical", command=canvas.yview)
+        canvas.configure(xscrollcommand=x_scroll.set, yscrollcommand=y_scroll.set)
+
+        canvas.grid(row=0, column=0, sticky="nsew")
+        y_scroll.grid(row=0, column=1, sticky="ns")
+        x_scroll.grid(row=1, column=0, sticky="ew")
+        window.columnconfigure(0, weight=1)
+        window.rowconfigure(0, weight=1)
+
+        width = max(900, len(self.history) * 8)
+        height = 760
+        canvas.configure(scrollregion=(0, 0, width, height))
+        draw_detailed_convergence(canvas, self.history, self.last_summary, width, height)
 
 
 def solve_vrp(settings, shipments):
@@ -495,9 +598,9 @@ def solve_vrp(settings, shipments):
                 "Los puntos estan muy separados para una red local de OSMnx. "
                 "Usa puntos dentro de la misma ciudad/region o cambia a Nacional aproximado."
             )
-        graph = create_graph(settings["city"])
+        graph = create_graph_around_coords(coords)
         dist_matrix, graph_nodes = get_distance_matrix(graph, coords)
-        distance_mode = "Local con calles OSMnx"
+        distance_mode = f"Local con calles OSMnx ({settings['city']})"
 
     best, cost, history = genetic_algorithm(
         dist_matrix,
@@ -623,10 +726,146 @@ def build_map(settings, shipments, graph, graph_nodes, routes, coords, distance_
     return os.path.abspath(MAP_OUTPUT)
 
 
+def build_selector_map(settings, port):
+    os.makedirs(os.path.dirname(SELECT_MAP_OUTPUT), exist_ok=True)
+    selector_map = folium.Map(
+        location=[settings["depot_lat"], settings["depot_lon"]],
+        zoom_start=12,
+    )
+    folium.Marker(
+        [settings["depot_lat"], settings["depot_lon"]],
+        tooltip="Deposito",
+        icon=folium.Icon(color="black", icon="home", prefix="fa"),
+    ).add_to(selector_map)
+
+    instruction = """
+    <div style="
+        position: fixed;
+        top: 16px;
+        left: 50px;
+        z-index: 9999;
+        background: white;
+        padding: 10px 12px;
+        border: 2px solid #333;
+        border-radius: 6px;
+        font-size: 14px;
+    ">
+        Haz clic en uno o varios destinos. Cada clic agrega un paquete a la tabla.
+        <div id="selected-coords" style="font-weight:700;margin-top:6px;"></div>
+    </div>
+    """
+    selector_map.get_root().html.add_child(folium.Element(instruction))
+
+    map_name = selector_map.get_name()
+    script = f"""
+    <script>
+    setTimeout(function() {{
+        var map = {map_name};
+        var count = 0;
+        map.on('click', function(e) {{
+            count += 1;
+            var lat = e.latlng.lat;
+            var lon = e.latlng.lng;
+            var marker = L.marker(e.latlng).addTo(map);
+            marker.bindPopup('Destino seleccionado<br>Lat: ' + lat.toFixed(6) + '<br>Lon: ' + lon.toFixed(6)).openPopup();
+            document.getElementById('selected-coords').innerText = 'Destinos agregados: ' + count + ' | Ultimo: ' + lat.toFixed(6) + ', ' + lon.toFixed(6);
+            fetch('http://127.0.0.1:{port}/select', {{
+                method: 'POST',
+                headers: {{'Content-Type': 'application/json'}},
+                body: JSON.stringify({{lat: lat, lon: lon}})
+            }});
+        }});
+    }}, 500);
+    </script>
+    """
+    selector_map.get_root().html.add_child(folium.Element(script))
+    selector_map.save(SELECT_MAP_OUTPUT)
+
+
 def fit_map_to_points(result_map, coords):
     lats = [lat for _lon, lat in coords]
     lons = [lon for lon, _lat in coords]
     result_map.fit_bounds([[min(lats), min(lons)], [max(lats), max(lons)]], padding=(30, 30))
+
+
+def draw_detailed_convergence(canvas, history, summary, width, height):
+    canvas.delete("all")
+    pad_left = 70
+    pad_top = 55
+    chart_height = 320
+    chart_width = width - 120
+
+    canvas.create_text(30, 24, anchor="w", text="Funcion objetivo", font=("Segoe UI", 15, "bold"))
+    canvas.create_text(
+        30,
+        48,
+        anchor="w",
+        text="Minimizar Z = suma de distancias de todas las rutas + penalizaciones por exceder capacidad Q o vehiculos M.",
+        font=("Segoe UI", 10),
+    )
+    canvas.create_text(
+        30,
+        70,
+        anchor="w",
+        text="La grafica muestra el mejor valor de Z encontrado en cada generacion.",
+        font=("Segoe UI", 10),
+    )
+
+    min_y = min(history)
+    max_y = max(history)
+    span = max(max_y - min_y, 1)
+    origin_y = pad_top + chart_height
+    end_x = pad_left + chart_width
+
+    canvas.create_line(pad_left, origin_y, end_x, origin_y, fill="#666666", width=2)
+    canvas.create_line(pad_left, pad_top, pad_left, origin_y, fill="#666666", width=2)
+    canvas.create_text(pad_left, pad_top - 14, text=format_distance(max_y), anchor="w", font=("Segoe UI", 9))
+    canvas.create_text(pad_left, origin_y + 14, text=format_distance(min_y), anchor="w", font=("Segoe UI", 9))
+
+    points = []
+    for i, value in enumerate(history):
+        x = pad_left + chart_width * i / max(len(history) - 1, 1)
+        y = origin_y - chart_height * (value - min_y) / span
+        points.append((x, y))
+
+    for i in range(len(points) - 1):
+        canvas.create_line(*points[i], *points[i + 1], fill="#2563eb", width=2)
+
+    every = max(1, len(history) // 12)
+    for i, (x, y) in enumerate(points, start=1):
+        if i == 1 or i == len(points) or i % every == 0:
+            canvas.create_oval(x - 3, y - 3, x + 3, y + 3, fill="#2563eb", outline="")
+            canvas.create_text(x, origin_y + 28, text=str(i), font=("Segoe UI", 8))
+
+    canvas.create_text(
+        pad_left,
+        origin_y + 54,
+        anchor="w",
+        text="Generaciones. Desplaza horizontalmente para revisar toda la convergencia.",
+        font=("Segoe UI", 10),
+    )
+
+    bar_top = origin_y + 105
+    canvas.create_text(30, bar_top, anchor="w", text="Distancia individual por camion", font=("Segoe UI", 14, "bold"))
+
+    distances = []
+    for row in summary:
+        text = row["distancia"].replace(",", "")
+        if text.endswith("km"):
+            value = float(text.replace("km", "").strip()) * 1000
+        else:
+            value = float(text.replace("m", "").strip())
+        distances.append((row["vehiculo"], row["color"], value, row["distancia"]))
+
+    max_distance = max([item[2] for item in distances], default=1)
+    bar_y = bar_top + 42
+    for vehicle, color_text, value, label in distances:
+        color = color_text[color_text.find("(") + 1 : color_text.find(")")]
+        bar_width = max(8, 520 * value / max_distance)
+        canvas.create_text(45, bar_y + 10, text=f"V{vehicle}", anchor="w", font=("Segoe UI", 10, "bold"))
+        canvas.create_rectangle(95, bar_y, 95 + bar_width, bar_y + 22, fill=color, outline="")
+        canvas.create_text(105 + bar_width, bar_y + 11, text=label, anchor="w", font=("Segoe UI", 10))
+        bar_y += 42
 
 
 def add_route_stop_markers(result_map, shipments, route, color, vehicle_idx):

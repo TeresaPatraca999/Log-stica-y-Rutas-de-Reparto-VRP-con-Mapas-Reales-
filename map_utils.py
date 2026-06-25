@@ -7,6 +7,18 @@ def create_graph(place="Ciudad Ixtepec, Oaxaca, Mexico"):
     return ox.graph_from_place(place, network_type="drive")
 
 
+def create_graph_around_coords(coords, buffer_m=8_000, min_radius_m=12_000, max_radius_m=80_000):
+    center_lon = sum(lon for lon, _lat in coords) / len(coords)
+    center_lat = sum(lat for _lon, lat in coords) / len(coords)
+    radius_m = max(
+        haversine_distance(center_lon, center_lat, lon, lat)
+        for lon, lat in coords
+    )
+    radius_m = min(max(radius_m + buffer_m, min_radius_m), max_radius_m)
+
+    return ox.graph_from_point((center_lat, center_lon), dist=radius_m, network_type="drive")
+
+
 def nearest_graph_nodes(G, coords):
     graph_points = [(node, data["x"], data["y"]) for node, data in G.nodes(data=True)]
     return [nearest_node_bruteforce(graph_points, lon, lat) for lon, lat in coords]
