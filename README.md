@@ -50,7 +50,6 @@ Permite probar entregas a estados lejanos como Jalisco, Baja California o Quinta
 - `data/clientes.csv`: ejemplo local de entregas en el Istmo de Tehuantepec, Oaxaca.
 - `data/clientes_nacional.csv`: ejemplo nacional aproximado.
 - `run_app.bat`: ejecuta la app de escritorio.
-- `run_streamlit_app.bat`: conserva una version Streamlit anterior.
 - `requirements.txt`: librerias necesarias.
 
 ## Instalacion
